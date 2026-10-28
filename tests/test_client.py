@@ -5,7 +5,7 @@ from aiohttp import ClientSession, web
 
 from custom_components.skylink_orbit.orbitclient import OrbitClient
 
-pytestmark = pytest.mark.enable_socket
+pytestmark = pytest.mark.usefixtures("socket_enabled")
 
 
 async def test_signed_login_accepts_vendor_zero_result(aiohttp_server, monkeypatch):
@@ -251,3 +251,21 @@ async def test_diagnostics_allowlist_excludes_raw_packets(orbit_client, broker):
             "Garage",
         )
     )
+
+
+async def test_snapshot_online_flag_wins_until_link_update(orbit_client, broker):
+    import asyncio
+
+    broker.snapshot[0]["online"] = False
+    broker.snapshot[0]["reported"]["link"] = {"online": True}
+    await orbit_client.start()
+    assert not orbit_client.doors[0].online
+    updated = asyncio.Event()
+    orbit_client.subscribe(updated.set)
+    await broker.send(
+        "skylink/things/client/account-test/update/result",
+        {"data": {"hub_id": "hub-test", "reported": {"link": {"online": True}}}},
+    )
+    async with asyncio.timeout(1):
+        await updated.wait()
+    assert orbit_client.doors[0].online

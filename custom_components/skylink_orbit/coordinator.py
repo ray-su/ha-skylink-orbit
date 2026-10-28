@@ -1,6 +1,7 @@
 """Share a single push session across all doors on an account."""
 
 import logging
+from collections.abc import Callable
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP
@@ -25,12 +26,14 @@ class OrbitCoordinator(DataUpdateCoordinator[dict[tuple[str, str | None], Door]]
         self.client = client
         self._entry = entry
         self._unsubscribe = client.subscribe(self._updated)
-        self._stop_listener = hass.bus.async_listen_once(
+        self._closed = False
+        self._stop_listener: Callable[[], None] | None = hass.bus.async_listen_once(
             EVENT_HOMEASSISTANT_STOP, self._stop
         )
         self._updated()
 
     async def _stop(self, event) -> None:
+        self._stop_listener = None  # The one-shot listener already removed itself.
         await self.async_shutdown()
 
     @callback
@@ -43,7 +46,12 @@ class OrbitCoordinator(DataUpdateCoordinator[dict[tuple[str, str | None], Door]]
                 self._entry.async_start_reauth(self.hass)
 
     async def async_shutdown(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
         self._unsubscribe()
-        self._stop_listener()
+        if self._stop_listener is not None:
+            self._stop_listener()
+            self._stop_listener = None
         await self.client.close()
         await super().async_shutdown()

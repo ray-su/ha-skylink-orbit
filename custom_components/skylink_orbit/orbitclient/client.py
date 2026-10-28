@@ -24,7 +24,7 @@ from .errors import (
     LoginRejected,
     ProtocolError,
 )
-from .models import Door, doors_from_devices
+from .models import Door, device_family, doors_from_devices
 
 LOGIN_URL = "https://iot.skyhm.net:8444/skylinkhub_crm/skyhm_api_s.jsp"
 # Public protocol constant embedded in Orbit Home, not an account credential.
@@ -98,16 +98,7 @@ class OrbitClient:
         """Allowlisted state only, suitable for sharing in an issue report."""
         families = {"GDO": 0, "NOVA": 0, "NVMini": 0, "unsupported": 0}
         for device in self._devices.values():
-            model = device.get("type")
-            family = next(
-                (
-                    name
-                    for name in ("GDO", "NOVA", "NVMini")
-                    if isinstance(model, str) and model.startswith(name)
-                ),
-                "unsupported",
-            )
-            families[family] += 1
+            families[device_family(device.get("type"))] += 1
         return {
             "connected": self.connected,
             "device_count": len(self._devices),
@@ -244,6 +235,11 @@ class OrbitClient:
         hub_id = update["hub_id"]
         device = self._devices.setdefault(hub_id, {})
         _merge(device, update)
+        reported = update.get("reported")
+        link = reported.get("link") if isinstance(reported, dict) else None
+        if isinstance(link, dict) and "online" in link:
+            # Snapshots use top-level online; only push updates use link.online.
+            device["online"] = link["online"]
 
     async def activate(self, hub_id: str, channel: str | None) -> None:
         """Send one native pulse and await a reported state change, never retry."""

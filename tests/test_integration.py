@@ -69,7 +69,7 @@ async def test_ui_login_creates_account_entry(hass, client_factory):
 
 
 async def test_entry_exposes_status_with_disabled_activation_and_unloads(
-    hass, client_factory
+    hass, client_factory, caplog
 ):
     from homeassistant.helpers import entity_registry as er
     from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -100,6 +100,7 @@ async def test_entry_exposes_status_with_disabled_activation_and_unloads(
     assert hass.states.get(covers[0].entity_id).state == "unavailable"
     assert await hass.config_entries.async_unload(entry.entry_id)
     assert client.closed and not client.listeners
+    assert "Unable to remove unknown job listener" not in caplog.text
     assert client.activations == []
 
 
@@ -343,3 +344,23 @@ async def test_background_authentication_failure_starts_reauth(hass, client_fact
     flows = hass.config_entries.flow.async_progress()
     assert len(flows) == 1 and flows[0]["context"]["source"] == "reauth"
     await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_home_assistant_stop_cleans_up_without_listener_errors(
+    hass, client_factory, caplog
+):
+    from homeassistant.const import EVENT_HOMEASSISTANT_STOP
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    entry = MockConfigEntry(
+        domain="skylink_orbit",
+        unique_id="account-test",
+        data={"username": "owner@example.invalid", "password": "secret"},
+    )
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    hass.bus.async_fire(EVENT_HOMEASSISTANT_STOP)
+    await hass.async_block_till_done()
+    assert client_factory[-1].closed and not client_factory[-1].listeners
+    await hass.config_entries.async_unload(entry.entry_id)
+    assert "Unable to remove unknown job listener" not in caplog.text

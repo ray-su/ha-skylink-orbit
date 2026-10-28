@@ -4,6 +4,18 @@ from dataclasses import dataclass
 from typing import Any
 
 
+def device_family(model: object) -> str:
+    """Classify only the families established by the recovered protocol."""
+    return next(
+        (
+            name
+            for name in ("GDO", "NOVA", "NVMini")
+            if isinstance(model, str) and model.startswith(name)
+        ),
+        "unsupported",
+    )
+
+
 @dataclass(frozen=True)
 class Door:
     hub_id: str
@@ -29,23 +41,19 @@ def doors_from_devices(devices: dict[str, dict[str, Any]]) -> list[Door]:
         reported = reported if isinstance(reported, dict) else {}
         mdev = reported.get("mdev")
         mdev = mdev if isinstance(mdev, dict) else {}
-        link = reported.get("link")
-        online = (
-            link.get("online")
-            if isinstance(link, dict) and "online" in link
-            else device.get("online")
-        )
+        online = device.get("online")
         hub_name = device.get("hub_name") or "Garage"
         channels: list[tuple[str | None, str | None]]
-        if model.startswith("NOVA"):
+        family = device_family(model)
+        if family == "NOVA":
             channels = [
                 (channel, field)
                 for channel, field in (("A", "firstdoor"), ("B", "seconddoor"))
                 if device.get(f"{field}_name")
             ]
-        elif model.startswith("NVMini"):
+        elif family == "NVMini":
             channels = [("A", "firstdoor")]
-        elif model.startswith("GDO"):
+        elif family == "GDO":
             channels = [(None, None)]
         else:
             continue
