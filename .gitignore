@@ -1,0 +1,11 @@
+# Local upstream reference checkout and proprietary app analysis
+upstream/
+artifacts/
+.venv/
+__pycache__/
+# Private live traffic and credentials
+*.pcap
+*.pcapng
+*.mitm
+.env
+.env.*

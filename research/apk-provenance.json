@@ -1,0 +1,46 @@
+[
+  {
+    "package": "com.mtqqdemo.skylink",
+    "version_name": "3.5",
+    "version_code": "55",
+    "source": "https://d.apkpure.net/b/XAPK/com.mtqqdemo.skylink?versionCode=55",
+    "xapk_sha256": "773d34372940897fa9fe35fd7db894ce89c7f72f48dcf506176d856bcf150274",
+    "base_apk_sha256": "982d96ead933729094b3ef22638a96fd01e300ba94f3b6b1e8d1915f75f97aed",
+    "signer_certificates": [
+      {
+        "scheme": "0x7109871a",
+        "sha256": "78e02f20cfc2814a3b498b579a2e4d26f79130e45c3f2012f9b22373f8761d47",
+        "sha1": "23ae62e720376855e4932b59a551d1a57dfaeeb0"
+      },
+      {
+        "scheme": "0xf05368c0",
+        "sha256": "78e02f20cfc2814a3b498b579a2e4d26f79130e45c3f2012f9b22373f8761d47",
+        "sha1": "23ae62e720376855e4932b59a551d1a57dfaeeb0"
+      }
+    ],
+    "signature_cryptographically_verified": false,
+    "decompiler": "jadx 1.5.6"
+  },
+  {
+    "package": "com.mtqqdemo.skylink",
+    "version_name": "3.8.9",
+    "version_code": "79",
+    "source": "https://d.apkpure.net/b/XAPK/com.mtqqdemo.skylink?version=latest",
+    "xapk_sha256": "826ae79ca2387028ee587b5c033a2e3a641391d8fabc650e4b7c9827a48633f9",
+    "base_apk_sha256": "7cbdc0cb7bdb1200e5b90e9f816605913fa13c07ddd1dca85b4e1e78adc794a7",
+    "signer_certificates": [
+      {
+        "scheme": "0x7109871a",
+        "sha256": "78e02f20cfc2814a3b498b579a2e4d26f79130e45c3f2012f9b22373f8761d47",
+        "sha1": "23ae62e720376855e4932b59a551d1a57dfaeeb0"
+      },
+      {
+        "scheme": "0xf05368c0",
+        "sha256": "78e02f20cfc2814a3b498b579a2e4d26f79130e45c3f2012f9b22373f8761d47",
+        "sha1": "23ae62e720376855e4932b59a551d1a57dfaeeb0"
+      }
+    ],
+    "signature_cryptographically_verified": false,
+    "decompiler": "jadx 1.5.6"
+  }
+]
