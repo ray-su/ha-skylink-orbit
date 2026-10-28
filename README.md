@@ -4,14 +4,14 @@
 
 An experimental custom integration for garage openers paired with **Orbit Home by Skylink**. It connects directly to the Orbit cloud; no local MQTT broker or Android phone is needed.
 
-**Requires Home Assistant 2026.10.0 or newer.** Tested against simulated services and Home Assistant 2026.10.0. On 2026-10-28, the owner confirmed account setup, GDO discovery, door activation, and Opening/Open/Closing/Closed updates on their opener. The exact hardware model has not been recorded; other families, light control, and Wi-Fi telemetry still need hardware validation. It is independent of Skylink and is not an official integration.
+**Requires Home Assistant 2026.10.0 or newer.** Tested against simulated services and Home Assistant 2026.10.0. On 2026-10-28, the owner confirmed account setup, GDO discovery, door activation, and Opening/Open/Closing/Closed updates on their opener. The exact hardware model has not been recorded; Wi-Fi RSSI was also observed in HA. Other families, light commands from HA, and the frequency of Wi-Fi updates still need hardware validation. It is independent of Skylink and is not an official integration.
 
 ## What it provides
 
 - Account setup and reauthentication through Home Assistant's UI.
 - Live garage status for the GDO, NOVA A/B, and NVMini families found in the Android app. These are protocol-supported families, not a hardware-tested compatibility list.
 - Separate doors under one physical device for dual-channel hubs.
-- One on/off **Light** entity per hub when it reports a valid light state.
+- Separate **Light on** and **Light off** buttons for GDO openers, even when no light state is reported.
 - One diagnostic **Wi-Fi signal** sensor per hub when it reports a valid RSSI value (dBm).
 - Reconnection, fresh discovery after reconnect, availability, and sanitized diagnostics.
 - An **Activate door** button that is **disabled by default**. The recovered command behaves like the app's main button; its exact physical behavior needs verification on your model.
@@ -34,11 +34,11 @@ To update, download the newer version in HACS and restart. To remove it, delete 
 
 ## Light and Wi-Fi signal
 
-Light and signal entities are discovered automatically when supported values arrive, including in updates after setup. A hub with two door channels still has only one light and one signal sensor. Existing door entity IDs are unchanged.
+GDO openers get **Light on** and **Light off** buttons automatically, without requiring a reported light value. These explicit commands match the controls the owner sees in Orbit Home. Light commands on other device families remain unverified and are not exposed. Signal sensors appear when a usable RSSI value arrives, including in updates after setup; a hub with two door channels still has one signal sensor. Existing door entity IDs are unchanged.
 
-The light sends the app's separate on/off commands once and waits for reported state. It does not assume a sent command succeeded or use a desired-state echo as proof. If no confirmation arrives, HA reports an unknown command outcome; no automatic retry is sent. An already-reported target state needs no command. The light does not support brightness or color. Verify on/off and automatic light changes against your opener before relying on them.
+Each light button press sends the app's corresponding command once. A successful service call means the command was sent; it does not confirm physical light state. No on/off state is inferred or displayed, and desired-command echoes are not treated as reported state. Offline requests are rejected, and commands are never automatically retried or replayed. Verify the physical light response on your opener. Version 0.2.1 replaces the stateful light entity introduced in 0.2.0 with these buttons; an old light entity, if one was created, is no longer provided.
 
-**No periodic polling is added.** Both entities read the existing MQTT startup/reconnect snapshot and pushed updates. There are no new subscriptions, refresh timers, or RSSI requests. Normal connection keepalives remain. The Wi-Fi sensor shows the last reported value; Skylink controls how often it changes, and it may remain unchanged until a later update or reconnect. Zero, malformed, and missing RSSI are unknown, not a strong signal. If the hub never reports a usable value, no signal entity is created. Explicitly cleared values become unknown; disconnected or removed hubs become unavailable.
+**No periodic polling is added.** Signal data uses the existing MQTT startup/reconnect snapshot and pushed updates. There are no new subscriptions, refresh timers, or RSSI requests. Normal connection keepalives remain. The Wi-Fi sensor shows the last reported value; Skylink controls how often it changes, and it may remain unchanged until a later update or reconnect. Zero, malformed, and missing RSSI are unknown, not a strong signal. If the hub never reports a usable value, no signal entity is created. Explicitly cleared values become unknown; disconnected or removed hubs become unavailable.
 
 The protocol is unofficial. Reusing existing pushed data minimizes additional traffic; it does not establish vendor approval of third-party clients.
 

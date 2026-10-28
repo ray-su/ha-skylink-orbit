@@ -42,6 +42,11 @@ class Hub:
     light: bool | None
     rssi: int | None
 
+    @property
+    def supports_light_commands(self) -> bool:
+        """GDO has explicit on/off controls even without light telemetry."""
+        return device_family(self.model) == "GDO"
+
 
 def hubs_from_devices(devices: dict[str, dict[str, Any]]) -> list[Hub]:
     hubs = []

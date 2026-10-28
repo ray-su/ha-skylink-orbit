@@ -371,8 +371,8 @@ async def test_home_assistant_stop_cleans_up_without_listener_errors(
     assert "Unable to remove unknown job listener" not in caplog.text
 
 
-async def test_light_and_signal_discovered_from_push_and_share_device(
-    hass, client_factory, caplog
+async def test_signal_discovery_still_has_one_sensor_per_dual_door_hub(
+    hass, client_factory
 ):
     from dataclasses import replace
 
@@ -388,88 +388,111 @@ async def test_light_and_signal_discovered_from_push_and_share_device(
     )
     entry.add_to_hass(hass)
     await hass.config_entries.async_setup(entry.entry_id)
-    await hass.async_block_till_done()
-    assert hass.states.async_all("light") == []
-    assert hass.states.async_all("sensor") == []
     client = client_factory[-1]
-    client.hubs = [Hub("nova-test", "Garage", "NOVA", True, False, -61)]
+    client.hubs = [Hub("nova-test", "Garage", "NOVA", True, None, -61)]
     client.doors = [
         Door("nova-test", "A", "Left", "Garage", "NOVA", 4, True),
         Door("nova-test", "B", "Right", "Garage", "NOVA", 1, True),
     ]
     client.emit()
     await hass.async_block_till_done()
-    lights = hass.states.async_all("light")
     sensors = hass.states.async_all("sensor")
-    assert len(lights) == len(sensors) == 1
-    light, signal = lights[0], sensors[0]
-    assert light.state == "off" and signal.state == "-61"
-    assert signal.attributes["unit_of_measurement"] == "dBm"
-    assert signal.attributes["device_class"] == "signal_strength"
-    assert light.attributes["supported_color_modes"] == ["onoff"]
-    registry = er.async_get(hass)
-    entities = [e for e in registry.entities.values() if "nova-test" in e.unique_id]
+    assert len(sensors) == 1 and sensors[0].state == "-61"
+    signal = sensors[0].entity_id
+    assert sensors[0].attributes["unit_of_measurement"] == "dBm"
+    assert sensors[0].attributes["device_class"] == "signal_strength"
+    entities = [
+        e for e in er.async_get(hass).entities.values() if "nova-test" in e.unique_id
+    ]
     assert len({e.device_id for e in entities}) == 1
-    for service, target in [("turn_on", True), ("turn_off", False)]:
-        await hass.services.async_call(
-            "light", service, {"entity_id": light.entity_id}, blocking=True
-        )
-        assert client.light_commands[-1] == ("nova-test", target)
-    # Commands do not optimistically change the light.
-    assert hass.states.get(light.entity_id).state == "off"
-    client.hubs = [replace(client.hubs[0], light=True, rssi=-74)]
+    assert not any("light_" in e.unique_id for e in entities)
+    for value, expected in [(-74, "-74"), (None, "unknown")]:
+        client.hubs = [replace(client.hubs[0], rssi=value)]
+        client.emit()
+        await hass.async_block_till_done()
+        assert hass.states.get(signal).state == expected
+        assert len(hass.states.async_all("sensor")) == 1
+    client.hubs = []
     client.emit()
     await hass.async_block_till_done()
-    assert hass.states.get(light.entity_id).state == "on"
-    assert hass.states.get(signal.entity_id).state == "-74"
-    assert (
-        len(hass.states.async_all("light")) == len(hass.states.async_all("sensor")) == 1
-    )
-    client.hubs = [replace(client.hubs[0], light=None, rssi=None)]
-    client.emit()
-    await hass.async_block_till_done()
-    assert hass.states.get(light.entity_id).state == "unknown"
-    assert hass.states.get(signal.entity_id).state == "unknown"
+    assert hass.states.get(signal).state == "unavailable"
+    await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_gdo_light_buttons_work_without_reported_light_state(
+    hass, client_factory, caplog
+):
+    from dataclasses import replace
+
     from homeassistant.exceptions import HomeAssistantError
+    from homeassistant.helpers import entity_registry as er
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
 
     from custom_components.skylink_orbit.orbitclient.errors import CommandRejected
+    from custom_components.skylink_orbit.orbitclient.models import Hub
 
+    async def start(client):
+        client.connected = True
+        client.hubs = [Hub("hub-test", "Garage", "GDO", True, None, -65)]
+
+    entry = MockConfigEntry(
+        domain="skylink_orbit",
+        unique_id="account-test",
+        data={"username": "owner@example.invalid", "password": "secret"},
+    )
+    entry.add_to_hass(hass)
+    with patch.object(FakeClient, "start", new=start):
+        await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    client = client_factory[-1]
+    registry = er.async_get(hass)
+    buttons = {
+        e.unique_id.rsplit(":", 1)[-1]: e
+        for e in registry.entities.values()
+        if e.domain == "button" and e.unique_id.endswith((":light_on", ":light_off"))
+    }
+    assert set(buttons) == {"light_on", "light_off"}
+    cover = next(e for e in registry.entities.values() if e.domain == "cover")
+    assert all(
+        e.disabled_by is None and e.device_id == cover.device_id
+        for e in buttons.values()
+    )
+    assert hass.states.async_all("light") == []
+    assert hass.states.async_all("sensor")[0].state == "-65"
+    for kind, on in [("light_on", True), ("light_off", False)]:
+        await hass.services.async_call(
+            "button", "press", {"entity_id": buttons[kind].entity_id}, blocking=True
+        )
+        assert client.light_commands[-1] == ("hub-test", on)
+    assert client.activations == []
+    assert client.hubs[0].light is None
+    button_id = buttons["light_on"].entity_id
     with patch.object(
-        client, "set_light", side_effect=CommandRejected("Light outcome unknown")
+        client, "set_light", side_effect=CommandRejected("Light command send failed")
     ):
-        with pytest.raises(HomeAssistantError, match="outcome unknown"):
+        with pytest.raises(HomeAssistantError, match="send failed"):
             await hass.services.async_call(
-                "light", "turn_on", {"entity_id": light.entity_id}, blocking=True
+                "button", "press", {"entity_id": button_id}, blocking=True
             )
     client.hubs = [replace(client.hubs[0], online=False)]
     client.emit()
     await hass.async_block_till_done()
-    assert hass.states.get(light.entity_id).state == "unavailable"
-    assert hass.states.get(signal.entity_id).state == "unavailable"
-    client.hubs = [replace(client.hubs[0], online=True, light=False, rssi=-62)]
-    client.emit()
-    await hass.async_block_till_done()
-    client.connected = False
-    client.emit()
-    await hass.async_block_till_done()
-    assert hass.states.get(light.entity_id).state == "unavailable"
-    assert hass.states.get(signal.entity_id).state == "unavailable"
-    previous_commands = list(client.light_commands)
+    assert all(
+        hass.states.get(e.entity_id).state == "unavailable" for e in buttons.values()
+    )
+    assert hass.states.async_all("sensor")[0].state == "unavailable"
+    previous = list(client.light_commands)
     try:
         await hass.services.async_call(
-            "light", "turn_on", {"entity_id": light.entity_id}, blocking=True
+            "button", "press", {"entity_id": button_id}, blocking=True
         )
     except HomeAssistantError:
         pass
-    assert client.light_commands == previous_commands
-    client.connected = True
+    assert client.light_commands == previous
     client.hubs = []
     client.emit()
     await hass.async_block_till_done()
-    assert hass.states.get(light.entity_id).state == "unavailable"
-    assert hass.states.get(signal.entity_id).state == "unavailable"
+    assert hass.states.get(button_id).state == "unavailable"
     await hass.config_entries.async_unload(entry.entry_id)
     assert client.closed and not client.listeners
-    assert [r.getMessage() for r in caplog.records if r.levelno >= 40] == [
-        "Error requesting skylink_orbit data: Orbit session unavailable"
-    ]
+    assert not [r for r in caplog.records if r.levelno >= 40]

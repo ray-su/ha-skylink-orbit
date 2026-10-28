@@ -306,19 +306,15 @@ class OrbitClient:
             unsubscribe()
 
     async def set_light(self, hub_id: str, on: bool) -> None:
-        """Set a hub's light once, confirming through reported push state only."""
+        """Send a GDO light command once; return means sent, not observed state."""
         hub = next((item for item in self.hubs if item.hub_id == hub_id), None)
         mqtt = self._mqtt
         if not self.connected or mqtt is None or hub is None or not hub.online:
             raise CommandRejected("Light is unavailable")
-        if hub.light is None:
-            raise CommandRejected("No reported light capability")
+        if not hub.supports_light_commands:
+            raise CommandRejected("Light commands are not established for this model")
         if hub_id in self._pending_lights:
             raise CommandRejected("A light command is already pending")
-        if hub.light is on:
-            return
-        changed = asyncio.Event()
-        unsubscribe = self.subscribe(changed.set)
         self._pending_lights.add(hub_id)
         payload = {
             "data": {
@@ -341,25 +337,12 @@ class OrbitClient:
                     qos=0,
                     retain=False,
                 )
-                while True:
-                    await changed.wait()
-                    changed.clear()
-                    if not self.connected or self._mqtt is not mqtt:
-                        raise CommandRejected("Connection lost; light outcome unknown")
-                    current = next(
-                        (item for item in self.hubs if item.hub_id == hub_id), None
-                    )
-                    if current is None or not current.online:
-                        raise CommandRejected("Light unavailable; outcome unknown")
-                    if current.light is on:
-                        return
+                if not self.connected or self._mqtt is not mqtt:
+                    raise CommandRejected("Connection lost; light outcome unknown")
         except (aiomqtt.MqttError, TimeoutError) as err:
-            raise CommandRejected(
-                "Light outcome unknown; no reported confirmation"
-            ) from err
+            raise CommandRejected("Light command send failed; outcome unknown") from err
         finally:
             self._pending_lights.discard(hub_id)
-            unsubscribe()
 
     async def login(self) -> str:
         """Authenticate without logging vendor responses or account data."""

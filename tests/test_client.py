@@ -303,17 +303,16 @@ async def test_hub_telemetry_uses_existing_push_without_more_requests(
 
 
 @pytest.mark.parametrize("target, opcode", [(True, 3), (False, 4)])
-async def test_light_command_waits_for_reported_state(
+async def test_gdo_light_command_without_status_sends_once(
     orbit_client, broker, target, opcode
 ):
     import asyncio
 
-    from custom_components.skylink_orbit.orbitclient.errors import CommandRejected
-
-    broker.snapshot[0]["reported"]["mdev"]["light"] = int(not target)
     await orbit_client.start()
     await broker.published.get()
-    command = asyncio.create_task(orbit_client.set_light("hub-test", target))
+    assert orbit_client.hubs[0].light is None
+    # No reported response: success means sent, not a physical state assertion.
+    await orbit_client.set_light("hub-test", target)
     async with asyncio.timeout(1):
         topic, payload, header = await broker.published.get()
     assert topic == "skylink/things/client/account-test/desire"
@@ -322,83 +321,29 @@ async def test_light_command_waits_for_reported_state(
     control = payload["data"]["desired"]["mdev"]["ctrlgdo"]
     assert set(control) == {"cmd", "ts"}
     assert control["cmd"] == opcode and control["ts"].isdigit()
-    with pytest.raises(CommandRejected, match="pending"):
-        await orbit_client.set_light("hub-test", target)
     updated = asyncio.Event()
     orbit_client.subscribe(updated.set)
     await broker.send("skylink/things/client/account-test/update/result", payload)
     async with asyncio.timeout(1):
         await updated.wait()
-    assert not command.done()  # A desired-state echo is not a light report.
-    assert orbit_client.hubs[0].light is not target
-    await broker.send(
-        "skylink/things/client/account-test/update/result",
-        {"data": {"hub_id": "hub-test", "reported": {"mdev": {"light": int(target)}}}},
-    )
-    await command
-    assert orbit_client.hubs[0].light is target
-    await orbit_client.set_light("hub-test", target)  # Already reported: no-op.
-    assert broker.published.empty()
-
-
-@pytest.mark.parametrize("failure", ["timeout", "disconnect", "offline", "cancel"])
-async def test_light_failure_never_retries_or_polls(orbit_client, broker, failure):
-    import asyncio
-
-    from custom_components.skylink_orbit.orbitclient.errors import CommandRejected
-
-    broker.snapshot[0]["reported"]["mdev"]["light"] = 0
-    await orbit_client.start()
-    await broker.published.get()
-    command = asyncio.create_task(orbit_client.set_light("hub-test", True))
+    assert orbit_client.hubs[0].light is None  # Never synthesize state from desired.
+    await orbit_client.set_light("hub-test", target)  # Each explicit press sends once.
     async with asyncio.timeout(1):
-        assert (await broker.published.get())[0].endswith("/desire")
-    if failure == "disconnect":
-        await broker.disconnect()
-    elif failure == "offline":
-        await broker.send(
-            "skylink/things/client/account-test/update/result",
-            {"data": {"hub_id": "hub-test", "reported": {"link": {"online": False}}}},
-        )
-    elif failure == "cancel":
-        command.cancel()
-    with pytest.raises(
-        asyncio.CancelledError if failure == "cancel" else CommandRejected
-    ):
-        await command
-    if failure == "disconnect":
-        changed = asyncio.Event()
-        unsubscribe = orbit_client.subscribe(changed.set)
-        async with asyncio.timeout(1):
-            while not orbit_client.connected:
-                await changed.wait()
-                changed.clear()
-        unsubscribe()
-        assert (await broker.published.get())[0].endswith("/get")  # Reconnect only.
-    if failure in ("timeout", "cancel"):
-        await orbit_client.set_light("hub-test", False)  # Pending lock was released.
-    await orbit_client.close()
+        assert (await broker.published.get())[1]["data"]["desired"]["mdev"]["ctrlgdo"][
+            "cmd"
+        ] == opcode
     assert broker.published.empty()
 
 
 @pytest.mark.parametrize(
-    "device",
-    [
-        {"type": "GDO", "online": True, "reported": {"mdev": {"door": 4}}},
-        {"type": "GDO", "online": False, "reported": {"mdev": {"light": 0}}},
-        {
-            "type": "SMO",
-            "online": True,
-            "reported": {"mdev": {"light": 0, "rssi": -50}},
-        },
-    ],
+    "model, online", [("GDO", False), ("NOVA", True), ("SMO", True)]
 )
-async def test_light_rejects_absent_capability_offline_and_unknown_family(
-    orbit_client, broker, device
+async def test_light_rejects_offline_and_unverified_models(
+    orbit_client, broker, model, online
 ):
     from custom_components.skylink_orbit.orbitclient.errors import CommandRejected
 
-    broker.snapshot = [{"hub_id": "hub-test", **device}]
+    broker.snapshot = [{"hub_id": "hub-test", "type": model, "online": online}]
     await orbit_client.start()
     await broker.published.get()
     with pytest.raises(CommandRejected):
@@ -428,3 +373,32 @@ async def test_hub_snapshot_replacement_discards_stale_telemetry(orbit_client, b
             changed.clear()
     assert orbit_client.hubs[0].light is None
     assert orbit_client.hubs[0].rssi is None
+
+
+async def test_light_command_is_not_replayed_on_reconnect(orbit_client, broker):
+    import asyncio
+
+    from custom_components.skylink_orbit.orbitclient.errors import CommandRejected
+
+    await orbit_client.start()
+    await broker.published.get()
+    await orbit_client.set_light("hub-test", True)
+    assert (await broker.published.get())[0].endswith("/desire")
+    broker.respond = False
+    changed = asyncio.Event()
+    orbit_client.subscribe(changed.set)
+    await broker.disconnect()
+    async with asyncio.timeout(1):
+        while orbit_client.connected:
+            await changed.wait()
+            changed.clear()
+    with pytest.raises(CommandRejected):
+        await orbit_client.set_light("hub-test", False)
+    broker.respond = True
+    async with asyncio.timeout(2):
+        while not orbit_client.connected:
+            await changed.wait()
+            changed.clear()
+    await orbit_client.close()
+    while not broker.published.empty():
+        assert (await broker.published.get())[0].endswith("/get")

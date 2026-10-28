@@ -149,3 +149,9 @@ The older `contralLight` method passes commands 3/4 with no channel selector. Th
 Implementation uses the existing account subscription and startup/reconnect snapshot only. No RSSI polling, extra subscription, post-command snapshot request, or automatic command retry is added. Entity creation requires a valid reported field on a recognized family. Light and RSSI belong to the physical hub, not its door channels.
 
 The owner has now confirmed GDO login, discovery, activation, and opening/open/closing/closed reports in HA. Light command responses and RSSI publication frequency remain unverified on hardware. If the vendor only provides a value in snapshots, HA retains that last reported value until another push or reconnect; it does not request more frequent reports. This design does not establish vendor approval of third-party API usage.
+
+### Correction after owner feedback (2026-10-28, 0.2.1)
+
+The owner installed 0.2.0 and observed Wi-Fi at -65 dBm but no Light entity. They then checked the app: it exposes separate light On/Off buttons, without a visible light status. A reported light field therefore cannot be a prerequisite for GDO commands. This is UI feedback, not a raw MQTT capture proving all models omit the field.
+
+The integration now exposes two command-only buttons for GDO hubs. Commands 3/4 return after the one-shot publish, without waiting for a reported light change. Success means sent, not physically confirmed; no light state is synthesized. Light telemetry, if present, remains available in sanitized diagnostics. Commands for other families remain unverified and are not exposed. The earlier reported-state gate and stateful light entity were removed; Wi-Fi's passive behavior is unchanged.

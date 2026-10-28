@@ -11,7 +11,7 @@ from .coordinator import OrbitCoordinator
 from .orbitclient.errors import AuthenticationError, OrbitError
 
 type OrbitConfigEntry = ConfigEntry[OrbitCoordinator]
-PLATFORMS = [Platform.COVER, Platform.BUTTON, Platform.LIGHT, Platform.SENSOR]
+PLATFORMS = [Platform.COVER, Platform.BUTTON, Platform.SENSOR]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: OrbitConfigEntry) -> bool:

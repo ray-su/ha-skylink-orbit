@@ -32,3 +32,7 @@ Compatibility target: Home Assistant 2026.10.0 and Python 3.14.2 or newer. The u
 ## Authorized extension: light and passive Wi-Fi telemetry (2026-10-28)
 
 The owner requested light state/on-off control and Wi-Fi strength, with an explicit constraint against periodic signal polling. Add optional hub-level entities based on reported fields, using the existing push session and startup/reconnect snapshot. Light commands use recovered opcodes 3/4 once and await reported confirmation, without optimistic desired echoes or automatic retries. Continue testing at the two approved public boundaries above. Hardware validation of these additions remains separate from simulated test results. Catalog submission and announcements are deferred at the owner's request.
+
+### Light model correction (2026-10-28, 0.2.1)
+
+Owner feedback clarified that the app offers light On/Off buttons without visible light state. Supersede the reported-light capability/confirmation requirement above: expose two explicit GDO light command buttons without requiring state telemetry. A completed press means the one-shot command was sent, not physically confirmed. Do not fabricate a light state or add polling. Other families' light controls remain unverified.
