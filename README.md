@@ -4,17 +4,19 @@
 
 An experimental custom integration for garage openers paired with **Orbit Home by Skylink**. It connects directly to the Orbit cloud; no local MQTT broker or Android phone is needed.
 
-**Requires Home Assistant 2026.10.0 or newer.** This first implementation is tested against simulated services and Home Assistant 2026.10.0. Authentication and physical device behavior still need owner-device validation. It is independent of Skylink and is not an official integration.
+**Requires Home Assistant 2026.10.0 or newer.** Tested against simulated services and Home Assistant 2026.10.0. On 2026-10-28, the owner confirmed account setup, GDO discovery, door activation, and Opening/Open/Closing/Closed updates on their opener. The exact hardware model has not been recorded; other families, light control, and Wi-Fi telemetry still need hardware validation. It is independent of Skylink and is not an official integration.
 
 ## What it provides
 
 - Account setup and reauthentication through Home Assistant's UI.
 - Live garage status for the GDO, NOVA A/B, and NVMini families found in the Android app. These are protocol-supported families, not a hardware-tested compatibility list.
 - Separate doors under one physical device for dual-channel hubs.
+- One on/off **Light** entity per hub when it reports a valid light state.
+- One diagnostic **Wi-Fi signal** sensor per hub when it reports a valid RSSI value (dBm).
 - Reconnection, fresh discovery after reconnect, availability, and sanitized diagnostics.
 - An **Activate door** button that is **disabled by default**. The recovered command behaves like the app's main button; its exact physical behavior needs verification on your model.
 
-The cover reports status and has no open, close, stop, or percentage-position actions. Partially open states appear as open; the `orbit_door_state` attribute preserves the original code. A close-delay state is unknown until actual motion or a terminal state arrives. Lights, cameras, settings, and firmware updates are outside this release.
+The cover reports status and has no open, close, stop, or percentage-position actions. Partially open states appear as open; the `orbit_door_state` attribute preserves the original code. A close-delay state is unknown until actual motion or a terminal state arrives. Dimming, cameras, settings, and firmware updates are outside this release.
 
 ## Install with HACS
 
@@ -29,6 +31,16 @@ The repository can be installed as a custom repository without being in HACS's d
 For manual installation, copy the entire `custom_components/skylink_orbit` directory into Home Assistant's `config/custom_components/` directory, then restart and add the integration. Include its `orbitclient`, `translations`, and `brand` subdirectories. HACS installs dependencies declared in the manifest through Home Assistant.
 
 To update, download the newer version in HACS and restart. To remove it, delete the entry under Devices & services, remove the download from HACS, and restart. This does not unpair the opener in Orbit Home.
+
+## Light and Wi-Fi signal
+
+Light and signal entities are discovered automatically when supported values arrive, including in updates after setup. A hub with two door channels still has only one light and one signal sensor. Existing door entity IDs are unchanged.
+
+The light sends the app's separate on/off commands once and waits for reported state. It does not assume a sent command succeeded or use a desired-state echo as proof. If no confirmation arrives, HA reports an unknown command outcome; no automatic retry is sent. An already-reported target state needs no command. The light does not support brightness or color. Verify on/off and automatic light changes against your opener before relying on them.
+
+**No periodic polling is added.** Both entities read the existing MQTT startup/reconnect snapshot and pushed updates. There are no new subscriptions, refresh timers, or RSSI requests. Normal connection keepalives remain. The Wi-Fi sensor shows the last reported value; Skylink controls how often it changes, and it may remain unchanged until a later update or reconnect. Zero, malformed, and missing RSSI are unknown, not a strong signal. If the hub never reports a usable value, no signal entity is created. Explicitly cleared values become unknown; disconnected or removed hubs become unavailable.
+
+The protocol is unofficial. Reusing existing pushed data minimizes additional traffic; it does not establish vendor approval of third-party clients.
 
 ## First account validation
 

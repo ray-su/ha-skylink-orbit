@@ -28,3 +28,7 @@ Use one failing behavior test and its implementation at a time. Run network prot
 
 
 Compatibility target: Home Assistant 2026.10.0 and Python 3.14.2 or newer. The user approved this scope and both test boundaries on 2026-10-27.
+
+## Authorized extension: light and passive Wi-Fi telemetry (2026-10-28)
+
+The owner requested light state/on-off control and Wi-Fi strength, with an explicit constraint against periodic signal polling. Add optional hub-level entities based on reported fields, using the existing push session and startup/reconnect snapshot. Light commands use recovered opcodes 3/4 once and await reported confirmation, without optimistic desired echoes or automatic retries. Continue testing at the two approved public boundaries above. Hardware validation of these additions remains separate from simulated test results. Catalog submission and announcements are deferred at the owner's request.

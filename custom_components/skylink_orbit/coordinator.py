@@ -11,7 +11,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from .const import DOMAIN
 from .orbitclient import OrbitClient
 from .orbitclient.errors import AuthenticationError
-from .orbitclient.models import Door
+from .orbitclient.models import Door, Hub
 
 
 class OrbitCoordinator(DataUpdateCoordinator[dict[tuple[str, str | None], Door]]):
@@ -24,6 +24,7 @@ class OrbitCoordinator(DataUpdateCoordinator[dict[tuple[str, str | None], Door]]
             hass, logging.getLogger(__name__), config_entry=entry, name=DOMAIN
         )
         self.client = client
+        self.hubs: dict[str, Hub] = {}
         self._entry = entry
         self._unsubscribe = client.subscribe(self._updated)
         self._closed = False
@@ -39,6 +40,7 @@ class OrbitCoordinator(DataUpdateCoordinator[dict[tuple[str, str | None], Door]]
     @callback
     def _updated(self) -> None:
         if self.client.connected:
+            self.hubs = {hub.hub_id: hub for hub in self.client.hubs}
             self.async_set_updated_data({door.key: door for door in self.client.doors})
         else:
             self.async_set_update_error(UpdateFailed("Orbit session unavailable"))

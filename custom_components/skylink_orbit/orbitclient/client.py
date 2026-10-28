@@ -24,7 +24,7 @@ from .errors import (
     LoginRejected,
     ProtocolError,
 )
-from .models import Door, device_family, doors_from_devices
+from .models import Door, Hub, device_family, doors_from_devices, hubs_from_devices
 
 LOGIN_URL = "https://iot.skyhm.net:8444/skylinkhub_crm/skyhm_api_s.jsp"
 # Public protocol constant embedded in Orbit Home, not an account credential.
@@ -83,11 +83,17 @@ class OrbitClient:
         self._listeners: set[Callable[[], None]] = set()
         self._pending: set[tuple[str, str | None]] = set()
         self._last_command: dict[tuple[str, str | None], float] = {}
+        self._pending_lights: set[str] = set()
 
     @property
     def doors(self) -> list[Door]:
         """Current door records, including unknown state when fields are absent."""
         return doors_from_devices(self._devices)
+
+    @property
+    def hubs(self) -> list[Hub]:
+        """Hub telemetry from existing snapshots/pushes; never fetch on access."""
+        return hubs_from_devices(self._devices)
 
     def subscribe(self, callback: Callable[[], None]) -> Callable[[], None]:
         """Notify on state or connectivity changes; return an unsubscribe function."""
@@ -107,6 +113,10 @@ class OrbitClient:
             "doors": [
                 {"channel": door.channel, "state": door.state, "online": door.online}
                 for door in self.doors
+            ],
+            "hubs": [
+                {"light": hub.light, "rssi": hub.rssi, "online": hub.online}
+                for hub in self.hubs
             ],
             "error": type(self.error).__name__ if self.error else None,
         }
@@ -293,6 +303,62 @@ class OrbitClient:
             ) from err
         finally:
             self._pending.discard(key)
+            unsubscribe()
+
+    async def set_light(self, hub_id: str, on: bool) -> None:
+        """Set a hub's light once, confirming through reported push state only."""
+        hub = next((item for item in self.hubs if item.hub_id == hub_id), None)
+        mqtt = self._mqtt
+        if not self.connected or mqtt is None or hub is None or not hub.online:
+            raise CommandRejected("Light is unavailable")
+        if hub.light is None:
+            raise CommandRejected("No reported light capability")
+        if hub_id in self._pending_lights:
+            raise CommandRejected("A light command is already pending")
+        if hub.light is on:
+            return
+        changed = asyncio.Event()
+        unsubscribe = self.subscribe(changed.set)
+        self._pending_lights.add(hub_id)
+        payload = {
+            "data": {
+                "hub_id": hub_id,
+                "desired": {
+                    "mdev": {
+                        "ctrlgdo": {
+                            "cmd": 3 if on else 4,
+                            "ts": str(int(time.time() * 1000)),
+                        }
+                    }
+                },
+            }
+        }
+        try:
+            async with asyncio.timeout(self._timeout):
+                await mqtt.publish(
+                    f"skylink/things/client/{self.account_id}/desire",
+                    json.dumps(payload),
+                    qos=0,
+                    retain=False,
+                )
+                while True:
+                    await changed.wait()
+                    changed.clear()
+                    if not self.connected or self._mqtt is not mqtt:
+                        raise CommandRejected("Connection lost; light outcome unknown")
+                    current = next(
+                        (item for item in self.hubs if item.hub_id == hub_id), None
+                    )
+                    if current is None or not current.online:
+                        raise CommandRejected("Light unavailable; outcome unknown")
+                    if current.light is on:
+                        return
+        except (aiomqtt.MqttError, TimeoutError) as err:
+            raise CommandRejected(
+                "Light outcome unknown; no reported confirmation"
+            ) from err
+        finally:
+            self._pending_lights.discard(hub_id)
             unsubscribe()
 
     async def login(self) -> str:

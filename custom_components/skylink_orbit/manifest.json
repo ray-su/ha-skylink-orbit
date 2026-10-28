@@ -8,5 +8,5 @@
   "iot_class": "cloud_push",
   "issue_tracker": "https://github.com/ray-su/ha-skylink-orbit/issues",
   "requirements": ["aiomqtt==2.5.1"],
-  "version": "0.1.0"
+  "version": "0.2.0"
 }

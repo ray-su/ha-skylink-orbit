@@ -139,3 +139,13 @@ A successful QoS-0 publish callback is not device acknowledgement or final state
 7. Continue with read-only account validation first: authenticate locally, enumerate devices and observe status alongside the iPhone app. No Android phone is needed.
 
 See [updated HA design](home-assistant-design.md) and [HTTP/auth details](orbit-auth-discovery.md).
+
+## Light and Wi-Fi extension (2026-10-28)
+
+Rechecked the local app sources before implementing these optional entities. `p098r4/c.java:210–217` reads light and RSSI from the same reported `mdev` object populated by snapshots and MQTT updates. Its Wi-Fi graphic thresholds at lines 135–148 are -65, -75 and -85, consistent with received signal strength in dBm. We expose the reported negative integer, not the graphic's coarse percentage. Missing, zero, out-of-range or malformed values remain unknown.
+
+The older `contralLight` method passes commands 3/4 with no channel selector. The latest app independently sends 3 in `p098r4/c.java:195` and 4 in `p098r4/f.java:27`, both via `MainActivity.p(hub_id, cmd, 1, null)`. The latest UI also applies optimistic desired-command echoes, as described above; the integration deliberately requires reported light state instead.
+
+Implementation uses the existing account subscription and startup/reconnect snapshot only. No RSSI polling, extra subscription, post-command snapshot request, or automatic command retry is added. Entity creation requires a valid reported field on a recognized family. Light and RSSI belong to the physical hub, not its door channels.
+
+The owner has now confirmed GDO login, discovery, activation, and opening/open/closing/closed reports in HA. Light command responses and RSSI publication frequency remain unverified on hardware. If the vendor only provides a value in snapshots, HA retains that last reported value until another push or reconnect; it does not request more frequent reports. This design does not establish vendor approval of third-party API usage.
