@@ -1,0 +1,33 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to Orbit Home",
+        "description": "Sign in with your Orbit Home account. Your opener must already be paired in the Orbit app. Door status is enabled; activation controls start disabled.",
+        "data": {
+          "username": "Email",
+          "password": "Password"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Sign in again",
+        "description": "Sign in with your Orbit Home account. Your opener must already be paired in the Orbit app. Door status is enabled; activation controls start disabled.",
+        "data": {
+          "username": "Email",
+          "password": "Password"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Orbit rejected these credentials. Check your email and password.",
+      "login_rejected": "Orbit rejected the login request. Check the account in the Orbit Home app; the server did not identify a specific cause.",
+      "cannot_connect": "Unable to connect to Orbit or receive its device list. Try again later.",
+      "invalid_response": "Orbit returned an unexpected response. Download diagnostics and report this issue."
+    },
+    "abort": {
+      "already_configured": "This Orbit account is already configured.",
+      "wrong_account": "Use the same Orbit account as the existing integration.",
+      "reauth_successful": "Authentication updated successfully."
+    }
+  }
+}
