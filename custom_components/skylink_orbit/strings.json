@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Connect to Orbit Home",
-        "description": "Sign in with your Orbit Home account. Your opener must already be paired in the Orbit app. Door status is enabled; activation controls start disabled.",
+        "description": "Sign in with your Orbit Home account. Your opener must already be paired in the Orbit app. New installations start with status only and a disabled native activation button. Guarded GDO Open/Close requires a separate opt-in under Configure; reauthentication preserves your settings.",
         "data": {
           "username": "Email",
           "password": "Password"
@@ -11,7 +11,7 @@
       },
       "reauth_confirm": {
         "title": "Sign in again",
-        "description": "Sign in with your Orbit Home account. Your opener must already be paired in the Orbit app. Door status is enabled; activation controls start disabled.",
+        "description": "Sign in with your Orbit Home account. Your opener must already be paired in the Orbit app. New installations start with status only and a disabled native activation button. Guarded GDO Open/Close requires a separate opt-in under Configure; reauthentication preserves your settings.",
         "data": {
           "username": "Email",
           "password": "Password"
@@ -28,6 +28,17 @@
       "already_configured": "This Orbit account is already configured.",
       "wrong_account": "Use the same Orbit account as the existing integration.",
       "reauth_successful": "Authentication updated successfully."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Guarded garage control",
+        "description": "Enable only after attended validation on every GDO door in this account. Open/Close uses a state-guarded toggle, not native directional commands. Stale cloud data and physical-remote races remain possible. NOVA/NVMini stay status-only. Changing this setting reloads the integration and resets in-memory interlocks: first inspect the door and ensure it is stationary. HomeKit does not inherit arrival location/expiry checks.",
+        "data": {
+          "enable_directional_controls": "Enable guarded Open/Close for validated GDO doors"
+        }
+      }
     }
   }
 }

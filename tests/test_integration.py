@@ -20,6 +20,10 @@ class FakeClient:
         self.closed = False
         self.activations = []
         self.light_commands = []
+        self.direction_requests = []
+
+    async def login(self):
+        return self.account_id
 
     async def start(self):
         self.connected = True
@@ -41,6 +45,9 @@ class FakeClient:
 
     async def set_light(self, hub_id, on):
         self.light_commands.append((hub_id, on))
+
+    async def set_closed(self, hub_id, channel, closed):
+        self.direction_requests.append((hub_id, channel, closed))
 
     def diagnostics(self):
         return {"connected": self.connected, "door_count": len(self.doors)}
@@ -140,7 +147,7 @@ async def test_flow_errors_leave_no_session(hass, client_factory, error, expecte
     from custom_components.skylink_orbit.orbitclient import errors
 
     with patch.object(
-        FakeClient, "start", side_effect=getattr(errors, error)("failure")
+        FakeClient, "login", side_effect=getattr(errors, error)("failure")
     ):
         result = await hass.config_entries.flow.async_init(
             "skylink_orbit",
@@ -193,10 +200,10 @@ async def test_reauthentication_preserves_account_identity(
         (2, "open"),
         (3, "closing"),
         (4, "closed"),
-        (5, "unknown"),
+        (5, "unavailable"),
         (6, "open"),
-        (7, "unknown"),
-        (None, "unknown"),
+        (7, "unavailable"),
+        (None, "unavailable"),
     ],
 )
 async def test_door_state_mapping_through_ha(hass, client_factory, code, expected):
@@ -496,3 +503,64 @@ async def test_gdo_light_buttons_work_without_reported_light_state(
     await hass.config_entries.async_unload(entry.entry_id)
     assert client.closed and not client.listeners
     assert not [r for r in caplog.records if r.levelno >= 40]
+
+
+async def test_cover_services_preserve_identity_and_dispatch_direction(
+    hass, client_factory
+):
+    from homeassistant.exceptions import HomeAssistantError
+    from homeassistant.helpers import entity_registry as er
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    from custom_components.skylink_orbit.orbitclient.errors import CommandRejected
+
+    entry = MockConfigEntry(
+        domain="skylink_orbit",
+        unique_id="account-test",
+        data={"username": "owner@example.invalid", "password": "secret"},
+        options={"enable_directional_controls": True},
+    )
+    entry.add_to_hass(hass)
+    registry = er.async_get(hass)
+    existing = registry.async_get_or_create(
+        "cover",
+        "skylink_orbit",
+        "account-test:hub-test:single:cover",
+        config_entry=entry,
+        suggested_object_id="existing_garage",
+    )
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    client = client_factory[-1]
+    state = hass.states.get(existing.entity_id)
+    assert state.attributes["supported_features"] == 3
+    assert state.attributes["device_class"] == "garage"
+    assert len(hass.states.async_all("cover")) == 1
+    for service, closed in [("open_cover", False), ("close_cover", True)]:
+        await hass.services.async_call(
+            "cover", service, {"entity_id": existing.entity_id}, blocking=True
+        )
+        assert client.direction_requests[-1] == ("hub-test", None, closed)
+    assert client.activations == []
+    assert hass.states.get(existing.entity_id).state == "closed"  # No optimistic state.
+    with patch.object(
+        client,
+        "set_closed",
+        side_effect=CommandRejected("Cannot verify current door state"),
+    ):
+        with pytest.raises(HomeAssistantError, match="Cannot verify"):
+            await hass.services.async_call(
+                "cover", "open_cover", {"entity_id": existing.entity_id}, blocking=True
+            )
+    client.connected = False
+    client.emit()
+    await hass.async_block_till_done()
+    before = list(client.direction_requests)
+    try:
+        await hass.services.async_call(
+            "cover", "open_cover", {"entity_id": existing.entity_id}, blocking=True
+        )
+    except HomeAssistantError:
+        pass
+    assert client.direction_requests == before
+    await hass.config_entries.async_unload(entry.entry_id)

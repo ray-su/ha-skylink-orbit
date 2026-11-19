@@ -25,6 +25,7 @@ class Door:
     model: str
     state: int | None
     online: bool
+    position_issue: str | None = None
 
     @property
     def key(self) -> tuple[str, str | None]:

@@ -32,7 +32,12 @@ class OrbitEntity(CoordinatorEntity[OrbitCoordinator]):
 
     @property
     def available(self) -> bool:
-        return super().available and self.door is not None and self.door.online
+        return (
+            super().available
+            and self.door is not None
+            and self.door.online
+            and self.door.position_issue is None
+        )
 
 
 def setup_doors(

@@ -16,7 +16,21 @@ An experimental custom integration for garage openers paired with **Orbit Home b
 - Reconnection, fresh discovery after reconnect, availability, and sanitized diagnostics.
 - An **Activate door** button that is **disabled by default**. The recovered command behaves like the app's main button; its exact physical behavior needs verification on your model.
 
-The cover reports status and has no open, close, stop, or percentage-position actions. Partially open states appear as open; the `orbit_door_state` attribute preserves the original code. A close-delay state is unknown until actual motion or a terminal state arrives. Dimming, cameras, settings, and firmware updates are outside this release.
+The cover remains **status-only by default**, including after an update. An explicit **Configure → Enable guarded Open/Close for validated GDO doors** option enables directional capabilities for GDO devices in that account; NOVA/NVMini remain status-only. Enable only after attended validation on every affected GDO door. Changing the option reloads the integration, briefly interrupting status and resetting in-memory interlocks: inspect the doors and ensure they are stationary first. Existing activation buttons and entity unique IDs are preserved.
+
+When enabled, each eligible directional request asks for one account snapshot over the existing MQTT connection and reconciles intervening pushed updates. No periodic polling or new subscription is added. Open sends one native activation only from reported Closed (4); Close sends one only from fully Open (1). A consistent refreshed report already at the target causes no pulse. Moving, partial, close-delay, unknown, removed or offline doors, failed refreshes, contradictory snapshots, and changed connections are rejected without a motion command.
+
+Every accepted snapshot is checked against prior motion-relevant evidence for **all known hubs**, including during reconnect and another door's request. A contradiction records a hub-level block separately from the replaceable status cache. This also covers no-op requests, removed/offline/unknown state, and model/channel changes; it blocks **both directional requests and native activation** for that hub. Later snapshots, telemetry, matching pushed reports or automatic reconnect cannot clear an existing block. A legitimate push before/during reconciliation can establish a changed state when no conflict was already recorded; metadata-only name, light and RSSI changes do not create one. Position reports received before a hub has supplied its model count as evidence too: discovery can fill in missing fields, but cannot contradict an observed position. If updates are dropped from the MQTT receive queue or a startup, reconnect or refresh buffer, the integration blocks motion for the entire account for the lifetime of that client. When reports conflict, history is lost, or an outcome is uncertain, the affected HA cover and activation button become **unavailable**; the HomeKit bridge marks the garage accessory unavailable rather than serving the disputed position as current. Diagnostics retain the raw last report and a reason. Light and Wi-Fi telemetry remain separate.
+
+**These are state-guarded pulses, not native directional hardware commands.** A newly received vendor snapshot can still contain stale device data, and a physical remote can race the check. Both directional and native activation controls share pending/cooldown checks and a persistent in-memory motion interlock. First movement does not release it: an explicit pushed target-position report is required. Snapshots, telemetry, elapsed debounce time and automatic reconnection cannot clear uncertain motion. Directional success requires the expected progress or target report, not merely any state change; it does not necessarily mean the final position has been reached. Motion is never automatically retried or replayed.
+
+If a snapshot request times out/is cancelled, its response ordering becomes uncertain and further directional refreshes are blocked for that client instance. Uncertain activation outcomes and contradictory-snapshot hub blocks remain latched too. **Inspect the physical door and confirm it is stationary before manually reloading the integration to recover.** A reload/restart resets in-memory protection; do not use it as an automatic retry mechanism. A missed legitimate state change can therefore require attended recovery rather than an automatic guess. Stop and percentage-position actions remain unsupported. No optimistic Orbit cover state or obstruction sensor is invented.
+
+**0.3.0 position handling:** Login in the configuration form verifies the account identity; entry setup performs MQTT discovery before exposing entities. Automatic setup retries share the failed attempt's observations, conflicts and history-loss flag without reusing its network client. Retained broker messages cannot complete a new discovery or acknowledge movement. Conflicting rows for a hub, or a pushed change of a known hub model, require attended recovery. An unknown, missing or close-delay reading makes the cover unavailable until a representable report arrives. On a directional cover, partial states (2/6) are also unavailable rather than advertising fully Open to Apple Home. A status-only cover retains the partial-as-open mapping. A valid push restores a merely unrepresentable position, not a latched conflict.
+
+### Apple Home / CarPlay (pending live validation)
+
+With the GDO option enabled, the existing garage-class cover advertises Open and Close, matching Home Assistant's HomeKit garage accessory interface. Once installation and control opt-in are separately approved, expose **only the garage cover** with HomeKit Bridge and pair that bridge in Apple Home. HomeKit commands use the integration guards, **not** the old arrival dashboard's GPS, three-minute authorization window or once-per-arrival conditions. Existing arrival automations remain unchanged. Siri Suggestions may show a garage tile near home, but Apple controls its appearance. Local tests exercise HA's real HomeKit garage adapter and cover services with a mocked driver/client, including resynchronization after a rejected command. Pairing, remote operation through a home hub, CarPlay presentation and physical actuation remain untested.
 
 ## Install with HACS
 
@@ -79,13 +93,13 @@ Python 3.14.2+ and [uv](https://docs.astral.sh/uv/) are used. The lockfile pins 
 
 ```sh
 uv sync --frozen
-uv run python -m pytest
+uv run --with-requirements tests/homekit-requirements.txt python -m pytest
 uv run ruff check .
 uv run ruff format --check .
 uv run mypy
 ```
 
-Tests exercise the public client against local HTTP and MQTT peers and Home Assistant's config-flow/entity interfaces against a simulated client. CI also runs hassfest and HACS validation. No real credentials or garage commands are used by tests.
+Tests exercise the public client against local HTTP and MQTT peers, Home Assistant's config-flow/entity interfaces against a simulated client, and the real HA HomeKit garage adapter against a mocked HAP driver and Orbit client. The optional test requirements enable that adapter test; plain `uv run pytest` skips it if HAP-python is absent. CI uses the complete test command above and also has hassfest and HACS validation jobs. No real credentials or physical garage commands are used by tests.
 
 Protocol details and limitations:
 

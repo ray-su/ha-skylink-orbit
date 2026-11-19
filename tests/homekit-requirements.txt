@@ -1,0 +1,7 @@
+# Optional HomeKit adapter test imports; not integration runtime requirements.
+HAP-python==5.0.0
+PyQRCode==1.2.1
+base36==0.1.1
+homekit-audio-proxy==1.2.1
+ha-ffmpeg==3.2.2
+PyTurboJPEG==1.8.2

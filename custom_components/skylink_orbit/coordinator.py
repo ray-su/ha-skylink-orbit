@@ -8,7 +8,7 @@ from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .const import DOMAIN
+from .const import CONF_DIRECTIONAL, DOMAIN
 from .orbitclient import OrbitClient
 from .orbitclient.errors import AuthenticationError
 from .orbitclient.models import Door, Hub
@@ -24,6 +24,7 @@ class OrbitCoordinator(DataUpdateCoordinator[dict[tuple[str, str | None], Door]]
             hass, logging.getLogger(__name__), config_entry=entry, name=DOMAIN
         )
         self.client = client
+        self.directional_enabled = entry.options.get(CONF_DIRECTIONAL) is True
         self.hubs: dict[str, Hub] = {}
         self._entry = entry
         self._unsubscribe = client.subscribe(self._updated)
